@@ -311,8 +311,32 @@ i2c_get_edid_bytes_using_i2c_layer(
          DBGMSF(debug, "Final single byte read returned %d, ndx=%d", rc, ndx);
       } // read_bytewise == true
       else {
+#if 0
          rc = invoke_i2c_reader(fd, 0x50, read_bytewise, edid_read_size, rawedid->bytes);
          DBGMSF(debug, "invoke_i2c_reader returned %s", psc_desc(rc));
+#else
+         int ndx;
+
+         rc = ioctl(fd, I2C_SLAVE_FORCE, 0x50);
+
+         for (ndx = 0; ndx < edid_read_size && rc == 0; ndx += I2C_SMBUS_BLOCK_MAX) {
+            union i2c_smbus_data data = {
+               .block = { I2C_SMBUS_BLOCK_MAX },
+            };
+            struct i2c_smbus_ioctl_data args = {
+               .read_write = I2C_SMBUS_READ,
+               .command = ndx,
+               .size = I2C_SMBUS_I2C_BLOCK_DATA,
+               .data = &data,
+            };
+
+            rc = ioctl(fd, I2C_SMBUS, &args);
+            if (data.block[0] != I2C_SMBUS_BLOCK_MAX)
+               rc = -1;
+            else if (rc == 0)
+               memcpy(&rawedid->bytes[ndx], &data.block[1], I2C_SMBUS_BLOCK_MAX);
+         }
+#endif
 
       }
       if (rc == 0) {
